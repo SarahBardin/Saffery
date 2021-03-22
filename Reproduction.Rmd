@@ -1,0 +1,84 @@
+---
+title: "Reproduction"
+author: "Sarah Bardin and Josh Gilman"
+date: "3/21/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library("tidyverse")
+library(spdep)
+library(maptools)
+library(sp)
+library(rgdal)
+library(DCluster)
+library(readr)
+library(readxl)
+library(tidycensus)
+library(sf)
+```
+
+
+```{r}
+##-----------------------##
+#------ READ IN DATA -----#
+##-----------------------##
+
+#---Saffery Data---#
+orig.data <- read_xlsx("data_22.05.2020.xlsx")
+
+#-Clean up variable names-#
+names(orig.data) <- substr(names(orig.data),1,regexpr(",",names(orig.data)))
+names(orig.data) <- substr(names(orig.data),1,nchar(names(orig.data))-1)
+str(orig.data)
+
+#---Boundary Data---#
+boundaries <- get_estimates(geography = "county", 
+                     product = "population", 
+                     year = 2018,                  ## something is wrong with 2019 data
+                     geometry = TRUE, 
+                     key = "b00a726f901443717201ad70b44d513ce669d088")
+
+boundaries <- boundaries %>% 
+                  filter(variable == "POP") 
+
+str(boundaries)
+
+
+##-----------------------##
+#------ MERGE DATA  -----#
+##-----------------------##
+ds <- inner_join(boundaries, orig.data, by = "GEOID") ## Josh, I used an inner join but we could consider
+                                                      ## alternative join
+ds <- st_transform(ds, 5070)
+ds <- ds %>% filter(!is.na(STATENM))  ## Results in 3,142 obs which matches article
+
+```
+
+
+```{r}
+##------------------------------------##
+#------ PERFORM GLOBAL MORAN'S I  -----#
+##------------------------------------##
+# Create spatial weights matrix with queen adjacency and binary connectivity
+QN <- poly2nb(ds, queen = TRUE)
+QN1.lw <- nb2listw(QN, style = "B", zero.policy = TRUE) ## there are empty neighbor sets
+                                                        ## so used zero.policy option
+moran(as.numeric(ds$DEATH100), QN1.lw, length(ds), Szero(QN1.lw))
+moran.test(as.numeric(ds$DEATH100), QN1.lw, zero.policy = TRUE)
+
+##------------------------------------##
+#----- TEST OUT DROPPING AK AND HI ----#
+##------------------------------------##
+
+ds2 <- ds %>% filter(substr(GEOID,1,2) != "02" & substr(GEOID,1,2) != "15") 
+
+QN.v2 <- poly2nb(ds2, queen = TRUE)
+QN1.lw.v2 <- nb2listw(QN.v2, style = "B", zero.policy = TRUE) ## there are still empty neighbor sets
+                                                              ## so used zero.policy option
+moran(as.numeric(ds2$DEATH100), QN1.lw.v2, length(ds2), Szero(QN1.lw.v2))
+moran.test(as.numeric(ds2$DEATH100), QN1.lw.v2, zero.policy = TRUE)
+
+```
