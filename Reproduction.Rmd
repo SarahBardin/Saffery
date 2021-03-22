@@ -6,7 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = F, results='hide', warning = F, message = F)
 
 library("tidyverse")
 library(spdep)
@@ -20,8 +20,11 @@ library(tidycensus)
 library(sf)
 ```
 
+# Data Preparation
+## Create Working File
+In order to reproduce Saffery et al.'s paper *Spatial Dynamics of COVID-19 in US Counties*, we need to first create a working data set. To do this, we've downloaded the data provided by Saffery et al. (data_22.05.2020.xlsx) as well as a Census county-level boundary file. We merge the two files together and restrict to counties with non-missing data. This achieves a sample size of 3,142 counties, which is the same sample size reported by Saffery et al. for their analysis.
 
-```{r}
+```{r read_in}
 ##-----------------------##
 #------ READ IN DATA -----#
 ##-----------------------##
@@ -57,8 +60,10 @@ ds <- ds %>% filter(!is.na(STATENM))  ## Results in 3,142 obs which matches arti
 
 ```
 
+## Reproduce Global Moran's I 
+After creating a working data file, we attempt to reproduce the global Moran's I statistics for the cases and deaths outcomes. We must use a the zero.policy = TRUE option in the weights construction, as there are counties with no neighbors in the data set. In part, this is due to the fact that the data set with 3,142 counties includes counties in Hawaii and Alaska. Because Saffery et al. indicated that Hawaii and Alaska were omitted from the analysis, we drop these counties, resulting in a data file with 3,108 counties. We again attempt to reproduce the global Moran's I statistics and again we find that there are counties without neighbors. **NEED TO INVESTIGATE WHICH COUNTIES THESE ARE** Despite needing to allow for counties with no neighbors, we are able to achieve similar I statisitics for both outcomes (to the third decimal place). **NOTE:** With rounding, we'd get an I statistic that is 0.001 higher than reported in the publication.
 
-```{r}
+```{r global, results= T}
 ##------------------------------------##
 #------ PERFORM GLOBAL MORAN'S I  -----#
 ##------------------------------------##
@@ -66,19 +71,21 @@ ds <- ds %>% filter(!is.na(STATENM))  ## Results in 3,142 obs which matches arti
 QN <- poly2nb(ds, queen = TRUE)
 QN1.lw <- nb2listw(QN, style = "B", zero.policy = TRUE) ## there are empty neighbor sets
                                                         ## so used zero.policy option
-moran(as.numeric(ds$DEATH100), QN1.lw, length(ds), Szero(QN1.lw))
 moran.test(as.numeric(ds$DEATH100), QN1.lw, zero.policy = TRUE)
 
 ##------------------------------------##
 #----- TEST OUT DROPPING AK AND HI ----#
 ##------------------------------------##
 
+#--DEATH RATE--#
 ds2 <- ds %>% filter(substr(GEOID,1,2) != "02" & substr(GEOID,1,2) != "15") 
 
 QN.v2 <- poly2nb(ds2, queen = TRUE)
 QN1.lw.v2 <- nb2listw(QN.v2, style = "B", zero.policy = TRUE) ## there are still empty neighbor sets
                                                               ## so used zero.policy option
-moran(as.numeric(ds2$DEATH100), QN1.lw.v2, length(ds2), Szero(QN1.lw.v2))
 moran.test(as.numeric(ds2$DEATH100), QN1.lw.v2, zero.policy = TRUE)
+
+#--CASE RATE--#
+moran.test(as.numeric(ds2$CASS100), QN1.lw.v2, zero.policy = TRUE)
 
 ```
